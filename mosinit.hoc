@@ -1,0 +1,184 @@
+load_file("nrngui.hoc")
+xopen("rlgntc5-10-95.geo")
+xopen("proc.hoc")
+
+
+celsius = 34
+dt = 0.02
+steps_per_ms = 1/dt
+tstop = 7000
+v_init = -70
+
+
+gcabarfixed = 1
+g_pas_fixed = 1
+g_hbar_fixed = 1
+
+
+// Not actually conductance, but permeability
+Gbar_cat_soma = 0.00007
+Gbar_cat_proximal = 0.00007 
+Gbar_cat_distal = 0.00007
+
+E_pas = -79
+G_pas_soma = 1.5e-5
+G_pas_prox = 8e-6
+G_pas_dist = 1.4e-6
+
+Ghbar_htc_soma = 1.5e-05
+Ghbar_htc_prox = 0
+Ghbar_htc_dist = 0
+
+AxialRes = 170
+C = 0.7
+Cprox = 0.7
+Cdist = 0.7
+Gbar_ican = 2.5e-4
+
+forsec whole_cell { 			// insert passive and Ih current everywhere
+	insert pas
+	e_pas=E_pas
+
+	insert htc
+	eh_htc=-45
+ 
+  insert irk          // insert IRK
+  gkbar_irk = 0.00002
+  shift_irk = 15
+
+	Ra = AxialRes
+	cm = C
+
+	nseg=3
+}
+
+objref distalsForStim
+distalsForStim = new Vector()
+distalsForStim.append(38, 45, 52, 61, 30, 124,74,118,185,107,151,157,161,25,31,49,13)
+
+for (n=0; n<=15; n+=1) { 
+  dend[distalsForStim.x[n]] {
+    nseg=9
+  }
+}
+
+soma {
+	insert hh2		// insert fast spikes
+	ena = 50
+	ek = -100
+	vtraub_hh2 = -52
+	gnabar_hh2 = 0.05
+	gkbar_hh2 = 0.05
+}
+if (g_pas_fixed==1) {
+  forsec whole_cell { g_pas = G_pas_soma }
+} else {
+  localizepas(G_pas_soma,G_pas_soma,G_pas_dist)
+}
+
+if (g_hbar_fixed==1) {
+  forsec whole_cell { ghbar_htc = Ghbar_htc_soma }
+} else {
+  localizehtc(Ghbar_htc_soma,Ghbar_htc_soma,Ghbar_htc_dist) 
+}
+
+  
+forsec whole_cell {
+
+	insert itGHK
+	cai = 2.4e-4 
+	cao = 2 
+	eca = 120 
+	shift_itGHK = -12	// shift for LJP
+	qm_itGHK = 5
+	qh_itGHK = 4
+
+	insert cad		// calcium diffusion everywhere
+	depth_cad = 0.1 
+	kt_cad = 0		// no pump
+	kd_cad = 1e-4
+	taur_cad = 5
+	cainf_cad = 2.4e-4
+	
+	insert ican
+	
+}
+
+if (gcabarfixed==1) {
+  forsec whole_cell {pcabar_itGHK = Gbar_cat_soma}
+} else{
+  localizeca(Gbar_cat_soma,Gbar_cat_proximal,Gbar_cat_distal)
+}
+
+proc init() {
+  soma { cm = C }
+  forsec proximals { cm = Cprox }
+  forsec distals { cm = Cdist }
+
+  forsec whole_cell {
+    e_pas = E_pas
+    Ra = AxialRes
+
+    gbar_ican = Gbar_ican
+  }
+  if (g_pas_fixed==1) {
+    forsec whole_cell { g_pas = G_pas_soma }
+  } else {
+  localizepas(G_pas_soma,G_pas_soma,G_pas_dist)
+  }
+  if (g_hbar_fixed==1) {
+    forsec whole_cell {ghbar_htc = Ghbar_htc_soma }
+  } else {
+    localizehtc(Ghbar_htc_soma,Ghbar_htc_soma,Ghbar_htc_dist) 
+  } 
+  if (gcabarfixed==1) {
+    forsec whole_cell {pcabar_itGHK = Gbar_cat_soma}
+  } else {
+    localizeca(Gbar_cat_soma,Gbar_cat_proximal,Gbar_cat_distal)
+  }
+  finitialize(v_init)
+  if (cvode.active()) {
+    cvode.re_init()
+  } else {
+    fcurrent()
+  }
+  frecord_init()
+}
+
+
+objref somastim
+soma somastim = new IClamp(0.5)
+somastim.del = 2000
+somastim.dur = 500
+somastim.amp = -0.1
+
+objref dendstim
+dend[38] dendstim = new IClamp(1)
+dendstim.del = 5500
+dendstim.dur = 500
+dendstim.amp = 0.02
+
+objref spstim
+soma spstim = new IClamp(0.5)
+spstim.del = 0
+spstim.dur = 0
+spstim.amp = 0
+
+
+addgraph("soma.v(0.5)",-90,-40, 1500, 3000)		// soma
+
+
+//Begin VariableTimeStep
+objectvar ocbox_
+ocbox_ = NumericalMethodPanel[0]
+object_push(ocbox_)
+
+atol_ = 0.001
+CVode[0].atol(atol_)
+restore(301, 1)
+object_pop()
+ocbox_.map("VariableTimeStep", 361, 451, 216.9, 120.6)
+objref ocbox_
+//End VariableTimeStep
+
+xopen("analysisProc.hoc")

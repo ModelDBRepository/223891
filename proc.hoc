@@ -1,0 +1,59 @@
+proc localizepas() {
+  soma { g_pas = $1 }
+  forsec proximals { g_pas = $2 }
+  forsec distals { g_pas = $3 }
+}
+proc localizehtc() {
+  soma { gbar_htc2 = $1 }
+  forsec proximals { gbar_htc2 = $2 }
+  forsec distals { gbar_htc2 = $3 }
+}
+
+proc localizeca() {
+  soma { pcabar_itGHK = $1 }
+  forsec proximals { pcabar_itGHK = $2 }
+  forsec distals { pcabar_itGHK = $3 }
+}
+
+objectvar g[20]			// max 20 graphs
+ngraph = 0
+proc addgraph() { local ii	// define subroutine to add a new graph
+				// addgraph("variable", minvalue, maxvalue, [mintime, maxtime])
+	ii = ngraph
+	ngraph = ngraph+1
+	g[ii] = new Graph()
+	if ( numarg() == 3 ) {
+    g[ii].size(0,tstop,$2,$3)
+  }
+  if ( numarg() == 5 ) {
+    g[ii].size($4,$5,$2,$3)
+  }
+	g[ii].xaxis()
+	g[ii].yaxis()
+	g[ii].addvar($s1,1,0)
+	g[ii].save_name("graphList[0].")
+	graphList[0].append(g[ii])
+}
+
+proc totalarea() { local sum //$o1 is section list
+  sum = 0
+  forsec $o1 {
+    for (x,0) {
+      sum += area(x)
+    }  
+  }
+  print "total surface area = ", sum, " um2"
+}
+
+objref zz
+zz = new Impedance()
+func rn() { local rn
+  init()  // make sure all changes to g, c, ri etc. have taken effect
+  soma zz.loc(0.5)  // sets origin for impedance calculations to middle of soma
+  zz.compute(0)  // DC input R
+  soma { rn = zz.input(0.5) }  // rn is input R at middle of the soma
+  return rn
+}
+
+
+

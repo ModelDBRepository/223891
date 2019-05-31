@@ -1,0 +1,1128 @@
+objref dendV, somaV, tvec, singleV, transV, somaTransV, fixedT, zapI
+dendV = new Vector()
+somaV = new Vector()
+tvec = new Vector()
+singleV = new Vector()
+transV = new Vector()
+somaTransV = new Vector()
+fixedT = new Vector()
+zapI = new Vector()
+
+
+objref sumV, dummyV
+sumV = new Vector() //summed voltage in fixed timestep
+
+newdt = 0.05
+fixedT.indgen(0, tstop, newdt)
+
+/////////////////////////////
+// --- HELPER FUNCTIONS
+/////////////////////////////
+
+
+proc minus55() {
+  v_init = -55
+  spstim.dur = 20000
+  spstim.del = 0
+  spstim.amp = .065
+}
+
+proc minus70() {
+  v_init = -70
+  spstim.dur = 500
+  spstim.del = 2000
+  spstim.amp = 0
+}
+
+func dleng() { //$1 = which dend $2 = position
+  soma distance()
+  dend[$1] { len = distance($2) }
+  return len
+}
+
+func len_to_p() { local p localobj pVec, difVec //$1 = which dend $2 = distance
+  pVec = new Vector()
+  difVec = new Vector()
+  dend[$1] for (p) {
+    pVec.append(p)
+    difVec.append(abs(dleng($1, p) - $2))
+  }
+  
+  return pVec.x(difVec.min_ind())
+}
+
+
+/////////////////////////////
+// --- DC ATTENUATION
+/////////////////////////////
+
+proc DSvoltagetransfer() { local start, end, oldtstop localobj f //$1 = which dendrite
+  oldstimamp = somastim.amp
+  somastim.amp = 0
+  dendstim.amp = -0.01
+  dendstim.dur = 500
+  dendstim.del = 2000
+  oldtstop = tstop
+  tstop = 3000
+
+  print "D->S Attenuation of a -10 pA step"
+  print "Data saved in DSvoltagetransfer.txt"
+  print "Data saved in table as..."
+  print "Dendrite Number, Position, Voltage Transfer"
+
+  f = new File()
+  f.aopen("DSvoltagetransfer.txt")
+
+  dend[$1] for (p) {
+    dend[$1] dendstim.loc(p)    
+    dendV.record(&dend[$1].v(p))
+    somaV.record(&soma.v(0.5))
+    tvec.record(&t)
+    init()
+    run()
+    start = tvec.indwhere(">=", dendstim.del-1)               //the index of the time just before stim starts
+    end = tvec.indwhere(">=", dendstim.del+dendstim.dur-1)   //the index of the time just before stim stops
+    f.printf("%g", $1) //dendrite number
+    f.printf("\t")
+    f.printf("%g", dleng($1, p))   //distance of site
+    f.printf("\t")
+    f.printf("%g", (somaV.x[end]-somaV.x[start])/(dendV.x[end]-dendV.x[start]))
+    f.printf("\n")
+  }
+  f.close()
+  tstop=oldtstop
+  somastim.amp = oldstimamp  
+  print "Done"
+}
+
+
+proc SDvoltagetransfer() { local start, end, oldtstop localobj f //$1 = which dendrite
+  dendstim.amp = 0
+  somastim.amp = -0.01
+  somastim.dur = 500
+  somastim.del = 2000
+  oldtstop = tstop
+  tstop = 3000
+  
+  f = new File()
+  f.aopen("SDvoltagetransfer.txt")
+
+  print "S->D Attenuation of a -10 pA step"
+  print "Data saved in SDvoltagetransfer.txt"
+  print "Data saved in table as..."
+  print "Dendrite Number, Position, Voltage Transfer"
+  
+  dend[$1] for (p) {
+    dend[$1] dendstim.loc(p)   
+    dendV.record(&dend[$1].v(p))
+    somaV.record(&soma.v(0.5))
+    tvec.record(&t)
+    init()
+    run()
+    start = tvec.indwhere(">=", somastim.del-1)               //the index of the time just before stim starts
+    end = tvec.indwhere(">=", somastim.del+somastim.dur-1)   //the index of the time just before stim stops
+    f.printf("%g", $1) //dendrite number
+    f.printf("\t")
+    f.printf("%g", dleng($1, p))   //distance of site
+    f.printf("\t")
+    f.printf("%g", (dendV.x[end]-dendV.x[start])/(somaV.x[end]-somaV.x[start]))
+    f.printf("\n")  
+  }
+  f.close()
+  tstop=oldtstop
+  print "Done"
+}
+
+
+proc dendriticresistance() { local start, end, oldtstop localobj f //$1 = which dendrite
+  oldstimamp = somastim.amp
+  somastim.amp = 0
+  dendstim.amp = -0.01
+  dendstim.dur = 500
+  dendstim.del = 2000
+  oldtstop = tstop
+  tstop = 3000
+  
+  f = new File()
+  f.aopen("Dendriticresistance.txt")
+
+  print "Local dendritic resistance in response to a -10 pA step"
+  print "Data saved in Dendriticresistance.txt"
+  print "Data saved in table as..."
+  print "Dendrite Number, Position, Local Resistance (MOhm)"
+  
+  dend[$1] for (p) {
+    dend[$1] dendstim.loc(p)   
+    dendV.record(&dend[$1].v(p))
+    tvec.record(&t)
+    init()
+    run()
+    start = tvec.indwhere(">=", dendstim.del-1)               //the index of the time just before stim starts
+    end = tvec.indwhere(">=", dendstim.del+dendstim.dur-1)   //the index of the time just before stim stops
+    f.printf("%g", $1) //dendrite number
+    f.printf("\t")
+    f.printf("%g", dleng($1, p))   //distance of site
+    f.printf("\t")
+    f.printf("%g", (dendV.x[end]-dendV.x[start])/dendstim.amp)
+    f.printf("\n")  
+  }
+  f.close()
+  tstop=oldtstop
+  somastim.amp = oldstimamp 
+  print "Done"
+}
+
+proc DStransferresistance() { local start, end, oldtstop localobj f //$1 = which dendrite
+  oldstimamp = somastim.amp
+  somastim.amp = 0
+  dendstim.amp = -0.01
+  dendstim.dur = 500
+  dendstim.del = 2000
+  oldtstop = tstop
+  tstop = 3000
+
+  print "D->S Transfer Resistance"
+  print "Data saved in DStransferresistance.txt"
+  print "Data saved in table as..."
+  print "Dendrite Number, Position, Transfer Resistance (MOhm)"
+
+  f = new File()
+  f.aopen("DStransferresistance.txt")
+
+  dend[$1] for (p) {
+    dend[$1] dendstim.loc(p)    
+    dendV.record(&dend[$1].v(p))
+    somaV.record(&soma.v(0.5))
+    tvec.record(&t)
+    init()
+    run()
+    start = tvec.indwhere(">=", dendstim.del-1)               //the index of the time just before stim starts
+    end = tvec.indwhere(">=", dendstim.del+dendstim.dur-1)   //the index of the time just before stim stops
+    f.printf("%g", $1) //dendrite number
+    f.printf("\t")
+    f.printf("%g", dleng($1, p))   //distance of site
+    f.printf("\t")
+    f.printf("%g", (somaV.x[end]-somaV.x[start])/dendstim.amp)
+    f.printf("\n")
+  }
+  f.close()
+  tstop=oldtstop
+  somastim.amp = oldstimamp  
+  print "Done"
+}
+
+
+proc SDtransferresistance() { local start, end, oldtstop localobj f //$1 = which dendrite
+  dendstim.amp = 0
+  somastim.amp = -0.01
+  somastim.dur = 500
+  somastim.del = 2000
+  oldtstop = tstop
+  tstop = 3000
+  
+  f = new File()
+  f.aopen("SDtransferresistance.txt")
+
+  print "S->D Transfer Resistance"
+  print "Data saved in SDtransferresistance.txt"
+  print "Data saved in table as..."
+  print "Dendrite Number, Position, Transfer Resistance (MOhm)"
+  
+  dend[$1] for (p) {
+    dend[$1] dendstim.loc(p)   
+    dendV.record(&dend[$1].v(p))
+    somaV.record(&soma.v(0.5))
+    tvec.record(&t)
+    init()
+    run()
+    start = tvec.indwhere(">=", somastim.del-1)               //the index of the time just before stim starts
+    end = tvec.indwhere(">=", somastim.del+somastim.dur-1)   //the index of the time just before stim stops
+    f.printf("%g", $1) //dendrite number
+    f.printf("\t")
+    f.printf("%g", dleng($1, p))   //distance of site
+    f.printf("\t")
+    f.printf("%g", (dendV.x[end]-dendV.x[start])/somastim.amp)
+    f.printf("\n")  
+  }
+  f.close()
+  tstop=oldtstop
+  print "Done"
+}
+
+/////////////////////////////
+// --- EPSP Template
+/////////////////////////////
+
+
+AMPAtau = 2
+AMPAgmax = 0.0002       //uS or 200 pS
+NMDAgmax = 1200         //0.0012 uS or 1200 pS
+uncageLength = 0.5
+
+begintemplate uEPSP //first argument is section, second is position. Third argument is delay
+
+  external dend, AMPAtau, AMPAgmax, NMDAgmax, uncageLength
+  public AMPAsyn, NMDAsyn, pre
+  objref AMPAsyn, NMDAsyn
+
+  create pre
+
+  proc init() {
+    objref AMPAsyn, NMDAsyn
+
+    dend[$1] AMPAsyn = new AlphaSynapse($2)
+    AMPAsyn.tau = AMPAtau 
+    AMPAsyn.gmax = AMPAgmax
+    AMPAsyn.onset = $3
+
+    pre {diam=1 L=1}
+    pre {insert rel}
+	  pre.dur_rel = uncageLength
+    pre.amp_rel = 2
+    pre.del_rel = $3
+
+    dend[$1] NMDAsyn = new NMDA_Mg_T($2)
+    NMDAsyn.gmax = NMDAgmax
+    setpointer NMDAsyn.C, pre.T_rel(0.5)
+    Erev_NMDA_Mg = 5
+    mg_NMDA_Mg_T = 1
+  }
+
+endtemplate uEPSP
+
+
+
+RG_AMPAtau = 1.6
+RG_AMPAgmax = 0.006       //uS or 6 nS
+RG_NMDAgmax = 22500         //0.015 uS or 15 nS
+RG_uncageLength = 0.5
+
+begintemplate RG_syn //first argument delay, second argument is amplitude multiple
+
+  external soma, RG_AMPAtau, RG_AMPAgmax, RG_NMDAgmax, RG_uncageLength
+  public AMPAsyn, NMDAsyn, pre
+  objref AMPAsyn, NMDAsyn
+
+  create pre
+
+  proc init() {
+    objref AMPAsyn, NMDAsyn
+
+    soma AMPAsyn = new AlphaSynapse(0.5)
+    AMPAsyn.tau = RG_AMPAtau 
+    AMPAsyn.gmax = RG_AMPAgmax * $2
+    AMPAsyn.onset = $1
+
+    pre {diam=1 L=1}
+    pre {insert rel}
+	  pre.dur_rel = RG_uncageLength
+    pre.amp_rel = 2
+    pre.del_rel = $1
+
+    soma NMDAsyn = new NMDA_Mg_T(0.5)
+    NMDAsyn.gmax = RG_NMDAgmax * $2
+    setpointer NMDAsyn.C, pre.T_rel(0.5)
+    Erev_NMDA_Mg = 5
+    mg_NMDA_Mg_T = 1
+  }
+
+endtemplate RG_syn
+
+objref esyn_list
+esyn_list = new List()
+
+/////////////////////////////
+// --- EPSP I/O CURVES
+/////////////////////////////
+
+interspotTime = 0.6
+num_spots = 16
+
+objref individualEPSPs[num_spots]
+for (n=0; n<num_spots; n+=1) {
+  individualEPSPs[n] = new Vector()
+}
+double maxEPSPs[num_spots]
+
+proc ClusteredInputs() { local i //first argument is number of inputs. Second argument is location
+  for (i=1; i<=$1; i+=1) {
+    esyn_list.append(new uEPSP(38, $2, 2000+((i-1)*interspotTime)))
+  }
+}
+
+proc DistributedInputs() { local q //first argument is num synapses, second is position
+  for (q=1; q<=$1; q+=1) {
+    esyn_list.append(new uEPSP(distalsForStim.x[(q-1) % distalsForStim.size()], $2, 2000+((q-1)*interspotTime)))
+  }
+}
+
+distribSeed = 1
+proc RandDistributedInputs() { local q  localobj randdend //first argument is num synapses, second is position
+  randdend = new Random(distribSeed)
+  randdend.discunif(0, distalsForStim.size()-1)
+  for (q=1; q<=$1; q+=1) {
+    esyn_list.append(new uEPSP(distalsForStim.x[randdend.repick()], $2, 2000+((q-1)*interspotTime)))
+  }
+  distribSeed += 1
+}
+
+
+proc uncage() {  local oldpos, start, end, oldtstop, p, n localobj f, f2 //argument is a flag 0 = clustered 1 = distributed.
+
+  somastim.amp = 0
+  dendstim.amp = 0
+
+  oldtstop = tstop
+  tstop = 3000
+
+  print "Data saved to distrib.txt"
+  print "Data saved in table as..."
+  print "Interspot Time, Distance, Number of Spots, Expected Amplitude, Somatic Amplitude"
+
+  f = new File()
+  f.aopen("distrib.txt")
+
+  //dend[38] for (p) { //uncomment to test across dendritic length
+  p=0.5 //125 um from soma  
+    dendV.record(&dend[38].v(p))
+    somaV.record(&soma.v(0.5))
+    tvec.record(&t)
+
+    if($1==1) {
+      PrepareForDistrib()
+    }
+    
+    for(n=1; n<=num_spots; n+=1) {
+      if(n==1 && $1==0) {
+        singleV.record(&soma.v(0.5))
+      }
+      
+      if($1==0) {
+        ClusteredInputs(n, p)
+      }
+      if($1==1) {
+        DistributedInputs(n, p)
+      }
+      init()
+      run()
+      if(n==1 && $1==0) {   
+        transV.interpolate(fixedT, tvec, singleV) //translate singleV into fixed timestep of newdt.
+      }
+      start = tvec.indwhere(">=", 1999)
+      end = tvec.indwhere(">=", 2500)
+      
+      f.printf("%g\t", interspotTime-0.1) //interspot time
+      
+      if($1==0) {
+        f.printf("%g\t", dleng(38, p)) //distance of site
+      }
+      if($1==1) {
+        f.printf("%g\t", dleng(38, p)) //distance of site      
+      }
+      f.printf("%g\t", n)  // number of spots
+      if($1==0) {
+        f.printf("%g\t", expected(n))
+      }
+      if($1==1) {
+        f.printf("%g\t", maxEPSPs[n-1])
+      }
+      f.printf("%g\t", somaV.max(start, end)-somaV.x[start])
+      f.printf("\n")     
+      esyn_list.remove_all()
+          
+           
+    }
+
+  f.close()
+  tstop=oldtstop
+  print "Done"
+  
+  
+
+  
+}
+
+toggle = 0
+
+func expected() { local start, end, n, i, q localobj fill_vec
+  n = $1
+  sumV.resize(fixedT.size())
+  sumV.fill(0) //just for testing
+  dummyV = new Vector() //unitary EPSP offset to allow for sum, also fixed timestep
+  dummyV.resize(fixedT.size())
+
+  for (i=1; i<=n; i+=1) {
+      dummyV.copy(transV)
+      fill_vec = new Vector(interspotTime*(i-1)/newdt, 0)
+      dummyV.insrt(0, fill_vec)      
+      dummyV.resize(fixedT.size())
+      sumV.add(dummyV)
+  }
+
+  start = fixedT.indwhere(">=", 1999)
+  end = fixedT.indwhere(">=", tstop)
+
+  return sumV.max(start, end)-sumV.x[start]
+}
+
+
+
+proc PrepareForDistrib() { local spot, i, start, end
+  sumV.resize(0) //just for testing
+  for (spot=0; spot<num_spots; spot+=1) {
+    esyn_list.append(new uEPSP(distalsForStim.x[spot % distalsForStim.size()], 1, 2000+spot*interspotTime)) 
+    singleV.record(&soma.v(0.5))
+    init()
+    run()
+    esyn_list.remove_all()
+    individualEPSPs[spot].interpolate(fixedT, tvec, singleV)
+    sumV.resize(individualEPSPs[spot].size())
+    sumV.add(individualEPSPs[spot])
+    start = fixedT.indwhere(">=", 1999)
+    end = fixedT.indwhere(">=", tstop)    
+    maxEPSPs[spot] = sumV.max(start, end)-sumV.x[start]
+  }
+}
+
+
+////////////////////////
+////////////
+//Saving EPSP runs
+////////////
+////////////////////////
+
+proc saveUncaging() {  local oldpos, start, end, oldtstop, p, n localobj f, intSomaV, intDendV //argument is a flag 0 = clustered 1 = distributed.
+
+  somastim.amp = 0
+  dendstim.amp = 0
+
+  oldtstop = tstop
+  tstop = 3000
+
+  f = new File()
+  f.aopen("fulluncage.txt")
+
+
+  dend[38] {  
+    dendV.record(&dend[38].v(0.8))
+    somaV.record(&soma.v(0.5))
+    tvec.record(&t)
+
+    for(n=1; n<=num_spots; n+=1) {
+      if(n==1 && $1==0) {
+        singleV.record(&soma.v(0.5))
+      }
+      
+      if($1==0) {
+        ClusteredInputs(n, 0.8)
+      }
+      if($1==1) {
+        DistributedInputs(n, 0.8)
+      }
+      init()
+      run()
+
+      intSomaV = new Vector()
+      intSomaV.interpolate(fixedT, tvec, somaV)
+      intDendV = new Vector()
+      intDendV.interpolate(fixedT, tvec, dendV)
+
+      start = fixedT.indwhere(">=", 1990)
+      end = fixedT.indwhere(">=", 2500)
+
+      for(x = start; x < end; x = x+1) {
+        f.printf("%g\t", fixedT.x(x))
+        f.printf("%g\t", intSomaV.x(x))
+        f.printf("%g\t", intDendV.x(x))
+        f.printf("\n") 
+      }
+      f.printf("\n")    
+   
+      esyn_list.remove_all()     
+    }
+  }
+  f.close()
+  tstop=oldtstop
+
+}
+
+proc saveExpected() {   local oldpos, start, end, oldtstop, p, n localobj f, asyn, intSomaV, intDendV //argument is a flag 0 = clustered 1 = distributed.
+
+  somastim.amp = 0
+  dendstim.amp = 0
+
+  oldtstop = tstop
+  tstop = 3000
+
+  f = new File()
+  f.aopen("Expected.txt")
+
+
+  dend[38] {
+    for (i=1; i<=num_spots; i+=1) {
+      dendV.record(&dend[38].v(0.8))
+      somaV.record(&soma.v(0.5))
+      tvec.record(&t)
+        
+      if($1==0) {
+        asyn = new uEPSP(38, 0.8, 2000+((i-1)*interspotTime))
+      }
+    
+      if($1==1) {
+        asyn = new uEPSP(distalsForStim.x[i-1], 0.8, 2000+((i-1)*interspotTime))
+      }
+      
+      init()
+      run()
+
+      intSomaV = new Vector()
+      intSomaV.interpolate(fixedT, tvec, somaV)
+      intDendV = new Vector()
+      intDendV.interpolate(fixedT, tvec, dendV)
+
+      start = fixedT.indwhere(">=", 1990)
+      end = fixedT.indwhere(">=", 2500)
+
+      for(x = start; x < end; x = x+1) {
+        f.printf("%g\t", fixedT.x(x))
+        f.printf("%g\t", intSomaV.x(x))
+        f.printf("%g\t", intDendV.x(x))
+        f.printf("\n") 
+      }
+      f.printf("\n")  
+    }
+    f.close()
+    tstop=oldtstop
+  }
+}
+
+
+///////////////
+//--Action Potential Backpropogation
+///////////////
+
+
+proc APattenuation() {  local start, end, oldtstop, p, n  localobj f
+   
+  dendstim.amp = 0
+
+  spstim.del = 1000 //set up spike inducing stim
+  spstim.dur = 2
+  spstim.amp = 1.5
+  
+  oldtstop = tstop
+  tstop = 3000
+
+  f = new File()
+  f.aopen("APattenuation.txt")
+
+
+  dend[38] for (p) {  
+    dendV.record(&dend[38].v(p))
+    somaV.record(&soma.v(0.5))
+    tvec.record(&t)
+
+    init()
+    run()
+    
+    start = tvec.indwhere(">=", 999)
+    end = tvec.indwhere(">=",  1100)
+
+    f.printf("%g\t", dleng(p)) //distance of site
+    f.printf("%g\t", somaV.max(start, end)-somaV.x[start]) //soma AP height
+    f.printf("%g\t", dendV.max(start, end)-dendV.x[start]) //dend AP height
+    f.printf("\n")     
+  }
+  f.close()
+  tstop=oldtstop
+}
+
+///////////////////////////////////////////
+///////////////
+//--EPSP ATTENUATION
+///////////////
+///////////////////////////////////////////
+
+
+obfunc createEPSC() {local factor, n, t localobj currentSynapse //$1=rise, $2=decay, $3=amplitude, $4=delay, $5=position, $6 = dendrite
+  //Creates a point process isyn and returns the object reference
+  dend[$6] {
+    currentSynapse = new isyn($5)
+    currentSynapse.tau1 = $1
+    currentSynapse.tau2 = $2
+    currentSynapse.amp = $3
+    currentSynapse.del = $4
+  }
+  return currentSynapse
+}
+
+obfunc createEPSCTrain() {local n localobj EPSClist //$1=rise, $2=decay, $3=amplitude, $4=delay, $5=position, $6 = number of EPSCs, $7 = interevent interval, $8 = dendrite
+  //Creates list containing several isyn point processes and returns the object reference for the list
+  EPSClist = new List($6)
+
+  for (n=0; n<$6; n+=1) {
+    EPSClist.append(createEPSC($1, $2, $3, $4+n*$7, $5, $8))
+  }
+  return EPSClist
+}
+
+EPSCrise=.5
+EPSCamplitude=.01
+
+
+proc dendEPSP() {local p localobj f, EPSCtrain //$1 = number of EPSCs, $2 = decay, $3 = interevent interval, $4 = dendrite
+  // creates a train of isyn processes, steps them down the dendrite, and records the voltage at the dendritic site and the soma
+  oldtstop = tstop
+  tstop = 3100
+  
+  somastim.amp = 0
+  dendstim.amp = 0
+
+  print "EPSP aplitude saved in EPSCs.txt"
+  print "Data saved in table as..."
+  print "Distance, Tau, Interevent Interval, Soma Amplitude, Dendrite Amplitude"
+
+  f = new File()
+  f.aopen("EPSCs.txt")
+  
+  somaV.record(&soma.v(0.5))
+
+  dend[$4] for (p) {
+    EPSCtrain = new List(1)
+    dendV.record(&dend[$4].v(p))
+    tvec.record(&t)
+    EPSCtrain.append(createEPSCTrain(EPSCrise, $2, EPSCamplitude, 2000, p, $1, $3, $4))
+    init()
+    run()     
+    start = tvec.indwhere(">=", 1999)
+    end = tvec.indwhere(">=", 3000)
+    f.printf("%g\t", dleng($4, p)) //distance of site
+    f.printf("%g\t", $2)  // tau
+    f.printf("%g\t", $3)  // interevent interval
+    f.printf("%g\t", somaV.max(start, end)-somaV.x[start])
+    f.printf("%g\t", dendV.max(start, end)-dendV.x[start])
+    f.printf("\n")     
+
+  }
+  f.close()
+  tstop=oldtstop
+  print "Done"
+}
+
+proc simpleTrain() { localobj EPSCtrain //$1 = number of EPSCs, $2 = decay, $3 = interevent interval, $4 = dendrite
+  oldtstop = tstop
+  tstop = 3100 
+  somastim.amp = 0
+  dendstim.amp = 0
+  EPSCtrain = new List()
+  EPSCtrain.append(createEPSCTrain(EPSCrise, $2, EPSCamplitude, 2000, 1, $1, $3, $4))
+  init()
+  run()  
+  tstop=oldtstop
+}
+
+
+proc burstEPSP() { local i, t localobj interval, tau //$1 = number of EPSPs, $2 = dendrite
+  //creates trains of EPSCs on dendrites with varying tau and intervals.
+  interval = new Vector(8)
+  interval.x(0)=0.1
+  interval.x(1)=1
+  interval.x(2)=2
+  interval.x(3)=3
+  interval.x(4)=5
+  interval.x(5)=10
+  interval.x(6)=30
+  interval.x(7)=100
+  
+  tau = new Vector(6)
+  tau.x(0)=1
+  tau.x(1)=2
+  tau.x(2)=3
+  tau.x(3)=4
+  tau.x(4)=5
+  tau.x(5)=10
+  for (i=0; i<8; i+=1) {
+    for (t=0; t<6; t+=1) { 
+      dendEPSP($1, tau.x(t), interval.x(i), $2)
+    }
+    if ($1 == 1) { //if there is only one EPSP 
+      i = 8       //no point in looping over different intervals
+    }    
+  }
+}
+
+
+func pause() { local tmp
+  tmp=startsw()
+  while (startsw()-tmp<$1) { }
+  return startsw()-tmp
+}
+
+///////////////////////////////////////////
+///////////////
+//--ZAP
+///////////////
+///////////////////////////////////////////
+objref zap
+proc saveZap() {   local start, end, oldtstop localobj intSomaV, intDendV, intZapI,  f //argument one 0 or 1 for soma or dend. Arg two is dendrite
+
+  somastim.amp = 0
+  dendstim.amp = 0
+
+  oldtstop = tstop
+  tstop = 22500
+
+  print "Raw voltage trace saved in zap.txt"
+  
+  dend[$2] for (p) {
+  
+    f = new File()
+    f.aopen("zap.txt")
+
+    if ($1 == 0) {
+      soma zap = new Izap(0.5) 
+      print "injecting into soma"
+    }
+
+    if ($1 == 1) {
+      dend[$2] zap = new Izap(p)
+      print "injecting into dend"
+    }
+
+    zap.del = 2000
+    zap.dur = 10000
+    zap.amp = 0.01
+    zap.f0 = 0
+    zap.f1 = 20
+
+    dendV.record(&dend[$2].v(p))
+    somaV.record(&soma.v(0.5))
+    tvec.record(&t)
+    zapI.record(&zap.i)
+    fixedT.indgen(0, tstop, newdt)
+        
+    init()
+    run()
+
+    intSomaV = new Vector()
+    intSomaV.interpolate(fixedT, tvec, somaV)
+    intDendV = new Vector()
+    intDendV.interpolate(fixedT, tvec, dendV)
+    intZapI = new Vector()
+    intZapI.interpolate(fixedT, tvec, zapI) 
+
+    start = fixedT.indwhere(">=", 2000)
+    end = fixedT.indwhere(">=", 12000)
+
+    for(x = start; x < end; x = x+1) {
+      f.printf("%g\t", fixedT.x(x)-2000)
+      f.printf("%g\t", intSomaV.x(x))
+      f.printf("%g\t", intDendV.x(x))
+      f.printf("%g\t", intZapI.x(x))
+      f.printf("\n") 
+    }
+    f.printf("\n")  
+  
+    f.close()
+  } 
+  tstop=oldtstop
+  print "Done"
+}
+
+
+
+/////////////////////////////////////////////
+///////////////
+//--GET SINGLE EPSPs
+///////////////
+/////////////////////////////////////////////
+
+
+proc getEPSP() {local p localobj f, EPSCtrain  //$1 decay (either 2 or 5) $2 = dendrite
+  // creates a single isyn processes, steps them down the dendrite, and records the entire voltage transient at the dendritic site and the soma
+  oldtstop = tstop
+  tstop = 3100
+  
+  somastim.amp = 0
+  dendstim.amp = 0
+
+  print "Full Dendritic and Somatic Voltage Transient saved in wholeEPSCs.txt"
+  print "Results dumped to console as..."
+  print "Position, Somatic Amplitude, Dendritic Amplitude"
+
+  f = new File()
+  f.aopen("wholeEPSCs.txt")
+  
+  somaV.record(&soma.v(0.5))
+
+  dend[$2] for (p) {
+    EPSCtrain = new List(1)
+    dendV.record(&dend[$2].v(p))
+    tvec.record(&t)
+    EPSCtrain.append(createEPSCTrain(EPSCrise, $1, EPSCamplitude, 2000, p, 1, 1, $2))
+    init()
+    run()     
+    start = tvec.indwhere(">=", 1500)
+    end = tvec.indwhere(">=", 2600)
+    x = printf("%f\t%f\t%f\n", dleng($2, p), somaV.max(start, end)-somaV.x[start], dendV.max(start, end)-dendV.x[start])
+    for(x = start; x < end; x = x+2) {
+      f.printf("%g\t", tvec.x(x))
+      f.printf("%g\t", somaV.x(x))
+      f.printf("%g\t", dendV.x(x))
+      f.printf("\n") 
+    }
+    f.printf("\n")     
+  }
+  f.close()
+  tstop=oldtstop
+}
+
+
+/////////////////////////////////////////////
+///////////////
+//--MOVING RECORDING
+///////////////
+/////////////////////////////////////////////
+
+proc movingRecording() {local p, x localobj f, EPSCtrain  //$1 decay (either 2 or 5), $2 = which dendrite
+  // creates a single isyn processes, fixed at the distal tip, and records the entire voltage transient at varying dendritic sites
+  oldtstop = tstop
+  tstop = 3100
+  
+  somastim.amp = 0
+  dendstim.amp = 0
+
+  print "Full Dendritic Voltage Transient saved in fixed-Inj-EPSCs.txt"
+  print "Results dumped to console as..."
+  print "Position, Dendritic Amplitude"
+
+  f = new File()
+  f.aopen("fixed-Inj-EPSCs.txt")
+  
+  EPSCtrain = new List(1)
+  EPSCtrain.append(createEPSCTrain(EPSCrise, $1, EPSCamplitude, 2000, 1, 1, 1, $2))
+
+  dend[$2] for (p) {
+    
+    dendV.record(&dend[$2].v(p))
+    tvec.record(&t)
+    init()
+    run()     
+    start = tvec.indwhere(">=", 1500)
+    end = tvec.indwhere(">=", 2600)
+    x = printf("%f\t%f\n", dleng($2, p), dendV.max(start, end)-dendV.x[start])
+    for(x = start; x < end; x += 1) {
+      f.printf("%g\t", tvec.x(x))
+      f.printf("%g\t", dendV.x(x))
+      f.printf("\n") 
+    }
+    f.printf("\n")     
+  }
+  f.close()
+  tstop=oldtstop
+}
+
+
+/////////////////////////////////////
+//////////////
+//Vary I-cat
+/////////////
+/////////////////////////////////////
+
+proc vary_cat_LTS() {local g, amp, oldGbar_cat_distal localobj f
+  oldtstop = tstop
+  tstop = 3000
+  
+  dendstim.amp = 0
+  
+  oldGbar_cat_distal = Gbar_cat_distal
+  gcabarfixed=0
+
+  f = new File()
+  f.aopen("vary_cat_LTS.txt")
+  
+  print "Raw Voltage Trace saved in vary_cat_LTS.txt"
+
+  for (g=0.00007; g>=0; g-=0.00001) {
+    for (amp = 0.025; amp <=0.1; amp+=0.025) {
+      somastim.amp = amp
+      Gbar_cat_distal=g
+      somaV.record(&soma.v(0.5))
+      tvec.record(&t)
+      init()
+      run()
+      start = tvec.indwhere(">=", 1900)
+      end = tvec.indwhere(">=", 2700)
+      for(x = start; x < end; x = x+2) {
+        f.printf("%g\t", tvec.x(x))
+        f.printf("%g\t", somaV.x(x))
+        f.printf("\n") 
+      } 
+    f.printf("\n") 
+    }
+  }
+  f.close() 
+  tstop=oldtstop
+  Gbar_cat_distal=oldGbar_cat_distal
+  gcabarfixed=1
+  print "Done"
+}
+
+proc var_cat_ca_conc() { local x localobj somaca, dendca, f, f2
+  dendstim.amp = 0
+  somastim.amp = 0.03
+  somastim.dur = 500
+  somastim.del = 2000
+  
+  oldtstop = tstop
+  tstop = 3000
+  
+  dendstim.amp = 0
+  
+  gcabarfixed=1 //fix calcium channel density to be constant throughout the cell
+  Gbar_cat_distal = 0.00007
+  
+  f = new File()
+  f.aopen("vary_cat_ca_conc_cntrl.txt")
+  
+  somaca = new Vector()
+  dendca = new Vector()
+  
+  somaca.record(&soma.cai(0.5))
+  dendca.record(&dend[38].cai(0.5))
+  tvec.record(&t)
+  
+  addgraph("soma.cai(0.5)", 0, 0.02, 2000, 2300)
+  addgraph("dend[38].cai(0.5)", 0, 0.02, 2000, 2300)
+
+  print "Calcium transient in cell with fixed calcium channel density"
+  print "Raw [Ca2+i] in soma and dend save in vary_cat_ca_conc_cntrl.txt"
+  print "Data saved in table as..."
+  print "Time, Soma conc. (mM), Dendrite conc. (mM)"
+
+  init()
+  run()
+  
+  start = tvec.indwhere(">=", 1900)
+  end = tvec.indwhere(">=", 2500)
+  for(x = start; x < end; x = x+1) {
+       f.printf("%g\t", tvec.x(x))
+       f.printf("%g\t", somaca.x(x))
+       f.printf("%g\t", dendca.x(x))
+       f.printf("\n") 
+  }
+  
+  f.close()
+  
+  gcabarfixed=0
+  Gbar_cat_distal = 0
+  Gbar_cat_proximal = 0
+  Gbar_cat_soma = 0.00092
+  
+  f2 = new File()
+  f2.aopen("vary_cat_ca_conc_justsoma.txt")
+  
+  somaca.record(&soma.cai(0.5))
+  dendca.record(&dend[38].cai(0.5))
+  tvec.record(&t)
+  
+  print "Calcium transient in cell with only somatic calcium channels"
+  print "Raw [Ca2+i] in soma and dend save in vary_cat_ca_conc_justsoma.txt"
+  print "Data saved in table as..."
+  print "Time, Soma conc. (mM), Dendrite conc. (mM)"    
+
+  init()
+  run()
+
+  start = tvec.indwhere(">=", 1900)
+  end = tvec.indwhere(">=", 2500)
+  for(x = start; x < end; x = x+1) {
+       f2.printf("%g\t", tvec.x(x))
+       f2.printf("%g\t", somaca.x(x))
+       f2.printf("%g\t", dendca.x(x))
+       f2.printf("\n") 
+  }
+  f2.close()
+  
+  gcabarfixed = 1
+  Gbar_cat_distal = 0.00007
+}
+
+proc vary_cat_uncage() { local oldGbar_cat_soma, g //First argument 0 = clustered; 1 = distributed
+  oldGbar_cat_soma = Gbar_cat_soma
+
+  for (g = 0.0001; g >= 0; g-=0.00001) {
+    Gbar_cat_soma = g
+    uncage($1)
+  }
+
+  Gbar_cat_soma = oldGbar_cat_soma
+
+}
+
+
+/////////////////////////////////////
+//////////////
+//GUI
+/////////////
+/////////////////////////////////////
+  objref dendlist
+  dendlist = new Vector(4)
+  dendlist.x(0)=38
+  dendlist.x(1)=157
+  dendlist.x(2)=161
+  dendlist.x(3)=124
+
+proc fig2e() { local d
+  for (d = 0; d < dendlist.size(); d += 1) {
+    DSvoltagetransfer(dendlist.x(d))  
+    SDvoltagetransfer(dendlist.x(d))
+  }
+}
+
+proc fig2f() { local d
+  for (d = 0; d < dendlist.size(); d += 1) {
+    dendriticresistance(dendlist.x(d))  
+  }
+}
+
+proc fig2g() { local d
+  for (d = 0; d < dendlist.size(); d += 1) {
+    DStransferresistance(dendlist.x(d))
+    SDtransferresistance(dendlist.x(d))
+  }
+}
+
+proc fig6d() {
+  interspotTime = 0.6
+  uncage(0)
+  interspotTime = 5.1
+  uncage(0)
+  interspotTime = 0.6
+}
+
+proc fig8h() {
+  minus55()
+  fig6dsynch()
+  fig6dasynch()
+  minus70()
+}
+
+
+target_tau = 2
+
+xpanel("Simulation Control")
+xlabel("Figures from Connelly et al., 2015")
+xbutton("Generate Fig 2E", "fig2e()")
+xbutton("Generate Fig 2F", "fig2f()")
+xbutton("Generate Fig 2G", "fig2g()")
+xbutton("Generate Fig 9C", "vary_cat_LTS()")
+xbutton("Generate Fig 10B", "var_cat_ca_conc()")
+
+xlabel("Figures from Connelly et al., 2016")
+xbutton("Generate Fig 6D", "fig6dsynch()")
+xbutton("Generate Fig 8H", "fig8h()")
+
+xpvalue("t", &t)
+
+xpanel(0)
