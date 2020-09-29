@@ -1103,8 +1103,7 @@ proc fig6d() {
 
 proc fig8h() {
   minus55()
-  fig6dsynch()
-  fig6dasynch()
+  fig6d()
   minus70()
 }
 
@@ -1120,7 +1119,7 @@ xbutton("Generate Fig 9C", "vary_cat_LTS()")
 xbutton("Generate Fig 10B", "var_cat_ca_conc()")
 
 xlabel("Figures from Connelly et al., 2016")
-xbutton("Generate Fig 6D", "fig6dsynch()")
+xbutton("Generate Fig 6D", "fig6d()")
 xbutton("Generate Fig 8H", "fig8h()")
 
 xpvalue("t", &t)
